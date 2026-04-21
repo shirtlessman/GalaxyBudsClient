@@ -1,0 +1,60 @@
+name: Compile Android APK
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Install Android workload
+        run: dotnet workload install android
+
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet/sdk/NuGetFallbackFolder || true
+          df -h /
+
+      - name: Restore
+        run: dotnet restore GalaxyBudsClient.Android/GalaxyBudsClient.Android.csproj --configfile GalaxyBudsClient/nuget.config
+
+      - name: Build APK (Debug, debug-signed)
+        run: |
+          dotnet publish GalaxyBudsClient.Android/GalaxyBudsClient.Android.csproj \
+            -f net10.0-android36.1 \
+            -c Debug \
+            -p:AndroidPackageFormats=apk \
+            -p:EmbedAssembliesIntoApk=true \
+            -p:IsAndroid=true \
+            -p:DebugType=PdbOnly \
+            -p:NotDebuggable=true \
+            --no-restore \
+            -o bin_android
+
+      - name: List APKs
+        run: find bin_android -maxdepth 4 -name '*.apk' -printf '%p  %s bytes\n'
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: GalaxyBudsClient_Android_APK
+          path: bin_android/*-Signed.apk
+          if-no-files-found: warn
+
+      - name: Upload all APKs (fallback)
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: GalaxyBudsClient_Android_all
+          path: bin_android/*.apk
+          if-no-files-found: warn
